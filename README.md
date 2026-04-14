@@ -1,1 +1,1 @@
-ÿþ
+BytesDoc is a document management system for BYTES student council. it's purpose is to centralize, organize, and secure administrative and eventâ€‘related documents with roleâ€‘based access and readâ€‘only archiving.
