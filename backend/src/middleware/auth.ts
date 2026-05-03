@@ -20,15 +20,15 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
 
   const { data: profile, error: profileErr } = await supabase
     .from('users')
-    .select('id, email, role')
+    .select('id, email, role:roles(role_name)')
     .eq('id', data.user.id)
-    .single()
+    .single<{ id: string; email: string; role: { role_name: Role } }>()
 
   if (profileErr || !profile) {
     return res.status(403).json({ error: 'User profile not found' })
   }
 
-  req.user = { id: profile.id, email: profile.email, role: profile.role as Role }
+  req.user = { id: profile.id, email: profile.email, role: profile.role.role_name }
   next()
 }
 

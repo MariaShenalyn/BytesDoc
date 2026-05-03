@@ -8,8 +8,8 @@ const router = Router()
 interface ProfileRow {
   id: string
   email: string
-  full_name: string
-  role: Role
+  name: string
+  role: { role_name: Role }
   created_at: string
 }
 
@@ -17,8 +17,8 @@ function toUser(p: ProfileRow) {
   return {
     id: p.id,
     email: p.email,
-    fullName: p.full_name,
-    role: p.role,
+    fullName: p.name,
+    role: p.role.role_name,
     createdAt: p.created_at,
   }
 }
@@ -37,7 +37,7 @@ router.post('/login', async (req, res, next) => {
 
     const { data: profile, error: profileErr } = await supabase
       .from('users')
-      .select('id, email, full_name, role, created_at')
+      .select('id, email, name, role:roles(role_name), created_at')
       .eq('id', data.user.id)
       .single<ProfileRow>()
 
@@ -70,7 +70,7 @@ router.get('/me', requireAuth, async (req: AuthedRequest, res, next) => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id, email, full_name, role, created_at')
+      .select('id, email, name, role:roles(role_name), created_at')
       .eq('id', req.user!.id)
       .single<ProfileRow>()
 
