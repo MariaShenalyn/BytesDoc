@@ -24,6 +24,7 @@ Role‑based redirect after mock login (choose role from dropdown or separate bu
 Mock credentials:
 
 Chief Minister (admin@bytes.com)
+pass:chiefadmin123
 
 Secretary (secretary@bytes.com)
 

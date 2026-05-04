@@ -40,11 +40,22 @@ Should return `{"ok":true,"service":"bytesdoc-backend"}`.
 In the Supabase SQL editor, run:
 
 ```sql
+create table public.roles (
+  id smallserial primary key,
+  role_name text unique not null check (role_name in ('chief_minister','secretary','finance_minister','member'))
+);
+
+insert into public.roles (role_name) values
+  ('chief_minister'),
+  ('secretary'),
+  ('finance_minister'),
+  ('member');
+
 create table public.users (
   id uuid primary key references auth.users(id) on delete cascade,
   email text unique not null,
-  full_name text not null,
-  role text not null check (role in ('chief_minister','secretary','finance_minister','member')),
+  name text not null,
+  role_id smallint not null references public.roles(id),
   created_at timestamptz default now()
 );
 
@@ -73,6 +84,18 @@ create table public.activity_logs (
 
 Then create a private Storage bucket called `documents` (Storage → New bucket → uncheck Public).
 
+After the schema is in place, create a user in **Authentication → Users → Add user**, then in the SQL editor insert the matching profile row so the API can find them:
+
+```sql
+insert into public.users (id, email, name, role_id)
+values (
+  '<uuid from auth.users>',
+  'admin@bytes.com',
+  'Admin Name',
+  (select id from public.roles where role_name = 'chief_minister')
+);
+```
+
 ## Auth model
 
 Frontend signs in with Supabase Auth and gets a JWT. Frontend sends `Authorization: Bearer <jwt>` to this API. The `requireAuth` middleware verifies the JWT with Supabase and looks up the user's role from the `users` table.
@@ -82,29 +105,50 @@ Frontend signs in with Supabase Auth and gets a JWT. Frontend sends `Authorizati
 ```
 backend/
 ├── src/
-│   ├── index.ts             # entry point
-│   ├── config/supabase.ts   # supabase client (service role)
+│   ├── index.ts                 # entry point
+│   ├── config/supabase.ts       # supabase clients (admin + public)
+│   ├── lib/
+│   │   ├── activityLog.ts       # fire-and-forget logActivity helper
+│   │   └── storage.ts           # uploadFile / createSignedUrl / deleteFile
 │   ├── middleware/
-│   │   ├── auth.ts          # requireAuth, requireRole
-│   │   └── error.ts         # central error handler
+│   │   ├── auth.ts              # requireAuth, requireRole
+│   │   └── error.ts             # central error handler
 │   ├── routes/
-│   │   └── health.ts        # GET /api/health
-│   └── types/index.ts       # shared types (mirrors frontend)
+│   │   ├── health.ts            # GET /api/health
+│   │   ├── auth.ts              # login, logout, me
+│   │   └── documents.ts         # documents CRUD + storage
+│   └── types/index.ts           # shared types (mirrors frontend)
 ├── .env.example
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
 
-## Endpoints (planned)
+## Endpoints
 
-- `POST /api/auth/login`
-- `GET|POST|PUT|DELETE /api/documents`
-- `GET /api/documents/:id/download`
-- `POST /api/documents/:id/archive`
-- `GET|POST /api/users`
-- `PUT /api/users/:id/role`
-- `GET|POST /api/activity-logs`
-- `GET /api/activity-logs/export`
+### Built
 
-These will be added in follow-up branches: `feature/backend-auth`, `feature/backend-documents`, etc.
+| Method | Path | Auth | Roles | Notes |
+|---|---|---|---|---|
+| GET    | `/api/health`                  | no  | —                                                  | sanity check |
+| POST   | `/api/auth/login`              | no  | —                                                  | `{ email, password }` → `{ user, token }` |
+| POST   | `/api/auth/logout`             | yes | any                                                | client drops token |
+| GET    | `/api/auth/me`                 | yes | any                                                | current user profile |
+| GET    | `/api/documents`               | yes | any (filtered by role)                             | query: `category`, `administration`, `archived`, `q` |
+| GET    | `/api/documents/:id`           | yes | any (filtered by role)                             | logs `view` |
+| POST   | `/api/documents`               | yes | chief_minister, secretary, finance_minister        | multipart `file` + metadata; logs `upload`; 10 MB cap |
+| PUT    | `/api/documents/:id`           | yes | uploader OR chief_minister                         | edit metadata; 409 if archived/locked |
+| DELETE | `/api/documents/:id`           | yes | uploader OR chief_minister                         | hard delete (DB + storage); 409 if archived |
+| GET    | `/api/documents/:id/download`  | yes | any (filtered by role)                             | returns 60s signed URL; logs `download` |
+
+### Planned
+
+- `POST /api/documents/:id/archive` + bulk archive by administration term — `feature/backend-documents-archive`
+- `GET|POST /api/users`, `PUT /api/users/:id/role` — `feature/backend-users`
+- `GET /api/activity-logs`, `GET /api/activity-logs/export` — `feature/backend-activity-logs`
+
+### Role-based document visibility
+
+- `chief_minister`, `member` — see all categories
+- `secretary` — excludes `Budgets`, `Financial Records`
+- `finance_minister` — only `Budgets`, `Financial Records`, `Reports`
